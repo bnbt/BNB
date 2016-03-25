@@ -5,8 +5,10 @@
 #include <Adafruit_LiquidCrystal.h>
 #include <EEPROM.h>
 #include <EEPROMAnything.h>
+#include <Wiegand.h>
 
 #define DEBUG
+#define DEVICE_ID "aZ9fU6409P"
 
 // ESP CONFIG
 #define SSID        "MYTH"
@@ -53,18 +55,24 @@ void lcd_setup() {
 #endif
 }
 
-void lcd_write(const char *msg, uint8_t row = 0) {
+void lcd_write(const char *msg, uint8_t row = 0, boolean clear_all = true) {
     byte i = 0;
     char str[LCD_COLS] = { 0 };
     for(;i<LCD_COLS; ++i) { str[i] = ' '; }
 
-    for (i=0;i<LCD_ROWS; ++i) {
-        lcd.setCursor(0,i);
-        lcd.print(str);
-        if (i == row) {
+    if (clear_all) {
+        for (i=0;i<LCD_ROWS; ++i) {
             lcd.setCursor(0,i);
-            lcd.print(msg);
+            lcd.print(str);
+            if (i == row) {
+                lcd.setCursor(0,i);
+                lcd.print(msg);
+            }
         }
+    } else {
+        lcd.setCursor(0,row);
+        lcd.print(msg);
+        lcd.print(str);
     }
 }
 
@@ -126,46 +134,110 @@ void led_loop() {
 ///////////////////////////////
 // ESP
 ///////////////////////////////
-
-void esp_setup()
-{
-    Serial.begin(9600);
-    Serial.print("setup begin\r\n");
-
-    Serial.print("FW Version:");
-    Serial.println(wifi.getVersion().c_str());
-
-    if (wifi.setOprToStationSoftAP()) {
-        Serial.print("to station + softap ok\r\n");
-    } else {
-        Serial.print("to station + softap err\r\n");
-    }
-
-    if (wifi.joinAP(SSID, PASSWORD)) {
-        Serial.print("Join AP success\r\n");
-        Serial.print("IP:");
-        Serial.println( wifi.getLocalIP().c_str());
-    } else {
-        Serial.print("Join AP failure\r\n");
-    }
-
-    if (wifi.disableMUX()) {
-        Serial.print("single ok\r\n");
-    } else {
-        Serial.print("single err\r\n");
-    }
-
-    Serial.print("setup end\r\n");
-}
-
-void reset_esp() {
+void esp_reset() {
+#ifdef DEBUG
+    Serial.println("Resetting ESP.");
+#endif
     pinMode(ESP_RESET_PIN, OUTPUT);
     digitalWrite(ESP_RESET_PIN, LOW);
     delay(500);
     digitalWrite(ESP_RESET_PIN, HIGH);
+#ifdef DEBUG
+    Serial.println("ESP reset.");
+#endif
 }
 
+void esp_setup() {
+#ifdef DEBUG
+    Serial.println("Setting up ESP.");
+#endif
+    esp_reset();
+    wifi.getVersion().c_str();
+#ifdef DEBUG
+    if (wifi.setOprToStationSoftAP()) {
+        Serial.println("to station + softap ok");
+    } else {
+        Serial.print("to station + softap err");
+    }
+#else
+    wifi.setOprToStationSoftAP();
+#endif
 
+#ifdef DEBUG
+    if (wifi.joinAP(SSID, PASSWORD)) {
+        Serial.println("Join AP success");
+        Serial.print("IP:");
+        Serial.println( wifi.getLocalIP().c_str());
+    } else {
+        Serial.println("Join AP failure");
+    }
+#else
+    wifi.joinAP(SSID, PASSWORD);
+#endif
+#ifdef DEBUG
+    if (wifi.disableMUX()) {
+        Serial.print("single ok");
+    } else {
+        Serial.print("single err");
+    }
+#else
+    wifi.disableMUX();
+#endif
+    lcd_write("ESP set..");
+#ifdef DEBUG
+    Serial.print("setup end");
+#endif
+}
+
+void esp_get(const char *url, const char *params) {
+//    Serial.println("IN GET");
+    String *get = new String("GET ");
+//    Serial.println(get->c_str());
+    get->concat(url);
+//    Serial.println(get->c_str());
+    if (strlen(params)) {
+        get->concat('?');
+        get->concat(params);
+    }
+//    Serial.println(get->c_str());
+    get->concat(" HTTP/1.1\r\n");
+//    Serial.println(get->c_str());
+    get->concat("Device: ");
+    get->concat(DEVICE_ID);
+    get->concat("\r\n\r\n");
+
+    const char *data = get->c_str();
+    Serial.print(data);
+//    lcd_write(data);
+
+    uint8_t buffer[300] = {0};
+
+    if (wifi.createTCP(HOST_NAME, HOST_PORT)) {
+        Serial.print("create tcp ok\r\n");
+    } else {
+        Serial.print("create tcp err\r\n");
+    }
+
+    wifi.send((const uint8_t*)data, strlen(data));
+
+    uint32_t len = wifi.recv(buffer, sizeof(buffer), 200);
+    if (len > 0) {
+        Serial.print("Received:");
+        Serial.println(len);
+        for(uint32_t i = 0; i < len; i++) {
+            Serial.print((char)buffer[i]);
+        }
+        Serial.print("]\r\n");
+        Serial.println("\r\n");
+    }
+
+    if (wifi.releaseTCP()) {
+        Serial.print("release tcp ok\r\n");
+    } else {
+        Serial.print("release tcp err\r\n");
+    }
+    delay(5000);
+}
 
 void esp_loop()
 {
@@ -177,7 +249,7 @@ void esp_loop()
         Serial.print("create tcp err\r\n");
     }
 
-    char *hello = "GET / HTTP/1.0\r\n\r\n";
+    char *hello = (char*)"GET / HTTP/1.0\r\n\r\n";
     wifi.send((const uint8_t*)hello, strlen(hello));
 
     uint32_t len = wifi.recv(buffer, sizeof(buffer), 10000);
@@ -197,18 +269,13 @@ void esp_loop()
     }
     delay(5000);
 }
-
 ////////////////////////////////
 /// MAIN
 ////////////////////////////////
-#define DEVICE_ID "aZ9fU6409P"
 byte buttonPressCount = 0;
-
-struct config_t {
-    char states[2][3]; // = { {'o', 'n', 'e'}, {'t', 'w', 'o'} };
-    byte colors[2][3]; // = {{255, 0 ,0}, {0, 255, 0}};
-} configuration;
-
+char *states;
+byte *colors;
+bool get_r = true;
 
 void setup() {
 #ifdef DEBUG
@@ -216,15 +283,21 @@ void setup() {
     Serial.println("Debug mode ON");
 #endif
     lcd_setup();
+    esp_setup();
     button_setup();
     led_setup();
-    //EEPROM_writeAnything(0, configuration);
-    EEPROM_readAnything(0, configuration);
-    Serial.write(configuration.states[0]);
+
 }
 
 void loop() {
-
+    if (get_r) {
+        String *x = new String("id=");
+        x->concat(DEVICE_ID);
+        Serial.print("params=");
+        Serial.println(x->c_str());
+        esp_get((char*)"/config", x->c_str());
+        get_r = false;
+    }
 }
 
 
