@@ -6,6 +6,7 @@
 #include <EEPROM.h>
 #include <EEPROMAnything.h>
 #include <Wiegand.h>
+#include <SimpleTimer.h>
 
 #define DEBUG
 #define DEVICE_ID "aZ9fU6409P"
@@ -34,6 +35,9 @@ Adafruit_LiquidCrystal lcd(0x20);
 
 // BUTTON CONFIG
 #define BUTTON_PIN 6
+
+// RFID CONFIG
+WIEGAND wg;
 
 /////////////////////////////
 // LCD
@@ -116,19 +120,17 @@ void led_setup() {
 #endif
 }
 
-void led_loop() {
-    //    setColor(255, 0, 0);  // red
-    //    delay(1000);
-    //    setColor(0, 255, 0);  // green
-    //    delay(1000);
-    //    setColor(0, 0, 255);  // blue
-    //    delay(1000);
-    //    setColor(255, 255, 0);  // yellow
-    //    delay(1000);
-    //    setColor(80, 0, 80);  // purple
-    //    delay(1000);
-    //    setColor(0, 255, 255);  // aqua
-    //    delay(1000);
+///////////////////////////////
+// RFID
+///////////////////////////////
+void rfid_setup() {
+#ifdef DEBUG
+    Serial.println("Setting up RFID.");
+#endif
+    wg.begin();
+#ifdef DEBUG
+    Serial.println("RFID set.");
+#endif
 }
 
 ///////////////////////////////
@@ -190,25 +192,25 @@ void esp_setup() {
 }
 
 void esp_get(const char *url, const char *params) {
-//    Serial.println("IN GET");
+    //    Serial.println("IN GET");
     String *get = new String("GET ");
-//    Serial.println(get->c_str());
+    //    Serial.println(get->c_str());
     get->concat(url);
-//    Serial.println(get->c_str());
+    //    Serial.println(get->c_str());
     if (strlen(params)) {
         get->concat('?');
         get->concat(params);
     }
-//    Serial.println(get->c_str());
+    //    Serial.println(get->c_str());
     get->concat(" HTTP/1.1\r\n");
-//    Serial.println(get->c_str());
+    //    Serial.println(get->c_str());
     get->concat("Device: ");
     get->concat(DEVICE_ID);
     get->concat("\r\n\r\n");
 
     const char *data = get->c_str();
     Serial.print(data);
-//    lcd_write(data);
+    //    lcd_write(get->c_str());
 
     uint8_t buffer[300] = {0};
 
@@ -225,37 +227,7 @@ void esp_get(const char *url, const char *params) {
         Serial.print("Received:");
         Serial.println(len);
         for(uint32_t i = 0; i < len; i++) {
-            Serial.print((char)buffer[i]);
-        }
-        Serial.print("]\r\n");
-        Serial.println("\r\n");
-    }
-
-    if (wifi.releaseTCP()) {
-        Serial.print("release tcp ok\r\n");
-    } else {
-        Serial.print("release tcp err\r\n");
-    }
-    delay(5000);
-}
-
-void esp_loop()
-{
-    uint8_t buffer[256] = {0};
-
-    if (wifi.createTCP(HOST_NAME, HOST_PORT)) {
-        Serial.print("create tcp ok\r\n");
-    } else {
-        Serial.print("create tcp err\r\n");
-    }
-
-    char *hello = (char*)"GET / HTTP/1.0\r\n\r\n";
-    wifi.send((const uint8_t*)hello, strlen(hello));
-
-    uint32_t len = wifi.recv(buffer, sizeof(buffer), 10000);
-    if (len > 0) {
-        Serial.print("Received:[");
-        for(uint32_t i = 0; i < len; i++) {
+            //@todo: parse and update settings
             Serial.print((char)buffer[i]);
         }
         Serial.print("]\r\n");
@@ -272,10 +244,24 @@ void esp_loop()
 ////////////////////////////////
 /// MAIN
 ////////////////////////////////
-byte buttonPressCount = 0;
-char *states;
-byte *colors;
-bool get_r = true;
+#define RESET_COUNT_SECS 5
+
+struct AppState {
+public:
+    int buttonPressCount = 0;
+    int timerId = 0;
+    byte resetCountSecs = RESET_COUNT_SECS; //secs
+    boolean gotSettings = false;
+    boolean buttonPressed = false;
+    boolean timmerStoped = true;
+    byte statesCount = 2;
+} app;
+
+//todo: set from server config
+const char *states[] = {"One", "TWO"};
+byte colors[][3] = {{255, 0, 0}, {0, 255, 0}};
+
+SimpleTimer timer;
 
 void setup() {
 #ifdef DEBUG
@@ -283,23 +269,131 @@ void setup() {
     Serial.println("Debug mode ON");
 #endif
     lcd_setup();
-    esp_setup();
+    //    esp_setup();
     button_setup();
     led_setup();
+    rfid_setup();
+    lcd_write("PRESS BUTTON");
+#ifdef DEBUG
+    Serial.println("Setup ended.");
+#endif
+}
 
+void send_option(byte state_id, unsigned long code) {
+    // @todo:
+    Serial.print("State id = ");
+    Serial.print(state_id);
+    Serial.print(" Code = ");
+    Serial.println(code);
+}
+
+void reset() {
+#ifdef DEBUG
+    Serial.println("Reseting everything.");
+#endif
+    // disable timer
+    timer.disable(app.timerId);
+    // power down the led
+    setColor(0,0,0);
+    // reset LCD
+    lcd_write("PRESS BUTTON");
+    // reset settings
+    app.timmerStoped = true;
+    app.resetCountSecs = RESET_COUNT_SECS;
+    app.buttonPressCount = 0;
+    app.timerId = 0;
+}
+
+void countdown() {
+    // mark timer as running
+    app.timmerStoped = false;
+#ifdef DEBUG
+    Serial.print("Countdown: ");
+    Serial.print(app.resetCountSecs);
+    Serial.println(" secs");
+#endif
+    // write countdown to lcd;
+    lcd_write(String(app.resetCountSecs).c_str(), 1, false);
+    app.resetCountSecs -= 1;
+
+    if (app.resetCountSecs == 0) {
+        // reset everything if countdown at 0
+        reset();
+    } else {
+        // set another countdown in 1 sec
+        app.timerId = timer.setTimeout(1000, countdown);
+    }
+}
+
+void updateButtonState() {
+    // reset state if over the max count
+    app.buttonPressCount = (app.buttonPressCount % app.statesCount) + 1;
+    // write state to lcd first row
+    lcd_write(states[app.buttonPressCount-1], 0, false);
+    // set button color
+    setColor(colors[app.buttonPressCount-1][0],
+            colors[app.buttonPressCount-1][1],
+            colors[app.buttonPressCount-1][2]
+            );
 }
 
 void loop() {
-    if (get_r) {
+    if (!app.gotSettings && 0) {
+        //@todo: get config from server
         String *x = new String("id=");
         x->concat(DEVICE_ID);
         Serial.print("params=");
         Serial.println(x->c_str());
         esp_get((char*)"/config", x->c_str());
-        get_r = false;
+        app.gotSettings = true;
+        lcd_write("END...");
+    }
+    // get button state (HIGH = pressed)
+    int state = digitalRead(BUTTON_PIN);
+    if (state == HIGH) {
+        // make sure that long press is consider 1 state changed
+        if (!app.buttonPressed) {
+#ifdef DEBUG
+            Serial.print("Button pressed..");
+#endif
+            // reset the couuntdown
+            app.resetCountSecs = RESET_COUNT_SECS;
+            // update the button color, times pressed and LCD display
+            updateButtonState();
+#ifdef DEBUG
+            Serial.print(" StateCount = ");
+            Serial.print(app.buttonPressCount);
+            Serial.print(" State = '");
+            Serial.print(states[app.buttonPressCount-1]);
+            Serial.print("' LED color = [");
+            Serial.print(colors[app.buttonPressCount-1][0]);
+            Serial.print(", ");
+            Serial.print(colors[app.buttonPressCount-1][1]);
+            Serial.print(", ");
+            Serial.print(colors[app.buttonPressCount-1][2]);
+            Serial.println("]");
+#endif
+            // start timer if not running
+            if (app.timmerStoped) { countdown(); }
+            // enable 1 time press
+            app.buttonPressed = true;
+        }
+    } else {
+        // tun timmers if any
+        timer.run();
+        // reset button pressed status
+        app.buttonPressed = false;
+        // read from RFID if button pressed
+        if (app.buttonPressCount && wg.available()) {
+#ifdef DEBUG
+            Serial.print("Selection confirmed. Code:  ");
+            Serial.println(wg.getCode());
+#endif
+            // reset everything
+            byte state = app.buttonPressCount;
+            reset();
+            // send selection to wifi
+            send_option(state, wg.getCode());
+        }
     }
 }
-
-
-
-

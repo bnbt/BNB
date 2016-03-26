@@ -16,6 +16,8 @@ INCLUDEPATH += "D:\dev\arduino\BNBT\lib\Adafruit_LiquidCrystal\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\EEPROM\src"
 INCLUDEPATH += "D:\dev\arduino\BNBT\lib\EEPROMAnything\src"
 INCLUDEPATH += "D:\dev\arduino\BNBT\lib\Wiegand\src"
+INCLUDEPATH += "D:\dev\arduino\BNBT\lib\RestBNB\src"
+INCLUDEPATH += "D:\dev\arduino\BNBT\lib\SimpleTimer\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\lib\ESP8266_ID127"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Bridge\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Esplora\src"
@@ -58,6 +60,8 @@ SOURCES += \
     lib/Adafruit_LiquidCrystal/src/Adafruit_LiquidCrystal.cpp \
     lib/Adafruit_MCP23008/src/Adafruit_MCP23008.cpp \
     lib/ESP8266/src/ESP8266.cpp \
+    lib/RestBNB/src/RestBNB.cpp \
+    lib/SimpleTimer/src/SimpleTimer.cpp \
     lib/Wiegand/src/Wiegand.cpp
 
 HEADERS += \
@@ -65,9 +69,10 @@ HEADERS += \
     lib/Adafruit_MCP23008/src/Adafruit_MCP23008.h \
     lib/EEPROMAnything/src/EEPROMAnything.h \
     lib/ESP8266/src/ESP8266.h \
+    lib/RestBNB/src/RestBNB.h \
+    lib/SimpleTimer/src/SimpleTimer.h \
     lib/Wiegand/src/Wiegand.h
 
 DISTFILES += \
-    platformio.pro.user \
     .gitignore \
     README.md
