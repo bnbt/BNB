@@ -1,27 +1,26 @@
+#define DEBUG
+
 #include "Arduino.h"
 #include <SoftwareSerial.h>
 #include <Wire.h>
 #include <ESP8266.h>
 #include <Adafruit_LiquidCrystal.h>
-#include <EEPROM.h>
-#include <EEPROMAnything.h>
 #include <Wiegand.h>
 #include <SimpleTimer.h>
 
-#define DEBUG
-#define DEVICE_ID "aZ9fU6409P"
+#define DEVICE_ID "1e950f"
 
 // ESP CONFIG
 #define SSID        "MYTH"
 #define PASSWORD    "mko09ijn"
-#define HOST_NAME   "80.241.216.84"
-#define HOST_PORT   8989
+#define HOST_NAME   "api.blastdev.com"
+#define HOST_PORT   8000
 #define ESP_RX_PIN 7 //  Connect this pin to TX on the esp8266
 #define ESP_TX_PIN 8 //  Connect this pin to RX on the esp8266
 #define ESP_RESET_PIN 12 // Connect this pin to CH_PD on the esp8266, not reset. (let reset be unconnected)
 
 SoftwareSerial espSerial(ESP_RX_PIN, ESP_TX_PIN); /* RX:D3, TX:D2 */
-ESP8266 wifi(espSerial);
+//ESP8266 wifi(espSerial);
 
 // LED CONFIG
 #define RED_LED_PIN 9
@@ -149,6 +148,7 @@ void esp_reset() {
 #endif
 }
 
+/*
 void esp_setup() {
 #ifdef DEBUG
     Serial.println("Setting up ESP.");
@@ -240,7 +240,7 @@ void esp_get(const char *url, const char *params) {
         Serial.print("release tcp err\r\n");
     }
     delay(5000);
-}
+}*/
 ////////////////////////////////
 /// MAIN
 ////////////////////////////////
@@ -256,6 +256,12 @@ public:
     boolean timmerStoped = true;
     byte statesCount = 2;
 } app;
+
+struct Response {
+public:
+    int httpStatus;
+    String *data;
+};
 
 //todo: set from server config
 const char *states[] = {"One", "TWO"};
@@ -337,16 +343,250 @@ void updateButtonState() {
             );
 }
 
+void emptyBuffer() {
+    Serial.println("==Emptying buffer");
+    while(espSerial.available() > 0) {
+        int c = espSerial.read();
+        Serial.write(c);
+        //        Serial.print(" -> ");
+        //        Serial.println(c);
+    }
+    Serial.println();
+    Serial.println("==buffer empty");
+}
+
+boolean readResponse(const char *expect, unsigned long timeout = 1000) {
+    Serial.println("==Reading response");
+
+    byte i =0;
+    byte size = strlen(expect);
+    boolean ok;
+    int read;
+
+    unsigned long start = millis();
+
+    Serial.println();
+    Serial.println("== DATA ==");
+    while (millis() - start < timeout) {
+        while(espSerial.available() > 0) {
+            ok = true;
+            for(i=0; i<size; ++i) {
+                delay(1);
+                read = espSerial.read();
+                Serial.write(read);
+                ok = ok && (read == (int)expect[i]);
+                if (!ok) { break; }
+            }
+            if (ok) {
+                Serial.println();
+                Serial.println("== ENDDATA ==");
+                Serial.print("OK: ");
+                Serial.println(millis() - start);
+                Serial.println();
+                emptyBuffer();
+                return true;
+            }
+        }
+    }
+
+    Serial.println();
+    Serial.println("== ENDDATA ==");
+    Serial.println("NOK");
+    Serial.println();
+    return false;
+}
+
+int readEsp() {
+    // improve read trick
+    delay(1);
+    int read = espSerial.read();
+    Serial.write(read);
+    return read;
+}
+
+Response *readGetConfig(unsigned long timeout = 1000) {
+    unsigned long start = millis();
+    int read;
+    /**
+     * @brief step
+     * 0 -> read untill status
+     * 1 -> read status
+     * 2 -> read untill data (~)
+     * 3 -> read data untill end (~)
+     */
+    byte step = 0;
+    byte i;
+    const char *begin = "HTTP/1.1 ";
+    Response *response = new Response();
+    response->httpStatus = 400;
+    response->data = new String();
+
+    Serial.println();
+    Serial.println();
+    Serial.println();
+    Serial.println("===== PARSING =====");
+    while (millis() - start < timeout) {
+        while(espSerial.available() > 0) {
+            if (step == 0) {
+                // read untill
+                // "HTTP/1.1 "
+                for (i=0;i<9;++i) {
+                    read = readEsp();
+                    if (read != begin[i]) { break; }
+                    if (i == 8) { ++step; }
+                }
+            } else if (step == 1) {
+                response->httpStatus = (readEsp()-48)*100 + (readEsp()-48)*10 + readEsp()-48;
+                ++step;
+            } else if (step == 2) {
+                // read untill '~'
+                read = readEsp();
+                if (read == 126) { ++step; }
+            } else if (step == 3) {
+                read = readEsp();
+
+                if (read != 126) {
+                    response->data->concat(char(read));
+                } else {
+                    emptyBuffer();
+                    return response;
+                }
+            }
+        }
+    }
+
+    return response;
+}
+
+void setMode(const char mode) {
+    emptyBuffer();
+    espSerial.print("AT+CWMODE=");
+    espSerial.println(mode);
+}
+
+void connectAP(const char *ssid, const char *pwd) {
+    emptyBuffer();
+    espSerial.print("AT+CWJAP=\"");
+    espSerial.print(ssid);
+    espSerial.print("\",\"");
+    espSerial.print(pwd);
+    espSerial.println("\"");
+}
+
+void resetEsp() {
+    emptyBuffer();
+    espSerial.println("AT+RST");
+}
+
+void setSingleConnection() {
+    emptyBuffer();
+    espSerial.println("AT+CIPMUX=0");
+}
+
+void setConnection(const char *address, int port) {
+    emptyBuffer();
+    espSerial.print("AT+CIPSTART=\"TCP\",\"");
+    espSerial.print(address);
+    espSerial.print("\",");
+    espSerial.println(port);
+}
+
+void prepareSend(int size) {
+    emptyBuffer();
+    espSerial.print("AT+CIPSEND=");
+    espSerial.println(size);
+}
+
+void getConfig() {
+    espSerial.println("GET /device/config HTTP/1.1");
+    espSerial.print("Device: ");
+    espSerial.println(DEVICE_ID);
+    espSerial.println();
+}
+
+int requestSize(byte state, unsigned long rfid) {
+    String getCc = "";
+    getCc.concat(state);
+    getCc.concat(rfid);
+    return 52 + getCc.length();
+}
+
+void updateState(byte state, unsigned long rfid) {
+    espSerial.print("PUT /device/state?s=");
+    espSerial.print(state);
+    espSerial.print("&u=");
+    espSerial.print(rfid);
+    espSerial.print(" HTTP/1.1\r\nDevice: ");
+    espSerial.println(DEVICE_ID);
+    espSerial.println();
+}
+
+void closeConnection() {
+    emptyBuffer();
+    espSerial.println("AT+CIPCLOSE");
+}
+
+
+void esp() {
+    boolean r;
+    esp_reset();
+
+    espSerial.begin(9600);
+    r = readResponse("Ai-Thinker", 5000);
+
+    resetEsp();
+    r = readResponse("ready", 5000);
+
+    setMode('1');
+    r = readResponse("OK", 2000);
+
+    connectAP(SSID, PASSWORD);
+    r = readResponse("OK", 10000);
+
+    setSingleConnection();
+    r = readResponse("OK", 10000);
+
+    setConnection(HOST_NAME, HOST_PORT);
+    r = readResponse("OK", 10000);
+
+    prepareSend(47);
+    r = readResponse(">", 10000);
+
+    getConfig();
+    Response *re = readGetConfig(10000);
+    Serial.println(re->data->c_str());
+
+    //    closeConnection();
+    //    r = readResponse("OK");
+
+    //    setConnection(HOST_NAME, HOST_PORT);
+    //    r = readResponse("OK", 10000);
+
+    //    byte state = 3;
+    //    unsigned long rfid = 226812;
+    //    int size = requestSize(state, rfid);
+    //    Serial.println(size);
+    //    prepareSend(size);
+    //    r = readResponse(">", 10000);
+
+    //    updateState(state, rfid);
+    //    r = readResponse("}", 10000);
+
+    //    emptyBuffer();
+
+}
+
 void loop() {
-    if (!app.gotSettings && 0) {
+    if (!app.gotSettings) {
         //@todo: get config from server
-        String *x = new String("id=");
-        x->concat(DEVICE_ID);
-        Serial.print("params=");
-        Serial.println(x->c_str());
-        esp_get((char*)"/config", x->c_str());
+        //        String *x = new String("id=");
+        //        x->concat(DEVICE_ID);
+        //        Serial.print("params=");
+        //        Serial.println(x->c_str());
+        //        esp_get((char*)"/config", x->c_str());
+        esp();
         app.gotSettings = true;
-        lcd_write("END...");
+        //        lcd_write("END...");
     }
     // get button state (HIGH = pressed)
     int state = digitalRead(BUTTON_PIN);
