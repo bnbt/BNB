@@ -377,3 +377,40 @@ bool RestBNB::putState(const byte& stateId, const unsigned long& code) {
 const char *RestBNB::getUserName() const {
     return this->lastResponse->data;
 }
+
+bool RestBNB::sendGetDeviceState() const {
+    this->espSerial->print("GET /device/state HTTP/1.1\r\nDevice: ");
+    this->espSerial->println(this->deviceId);
+    this->espSerial->println();
+
+    return this->expectResponse("HTTP/1.1 ", 2000, false);
+}
+
+bool RestBNB::getState() {
+    this->closeConnection();
+    bool ok = this->setConnection() &&
+            this->setSize(40 + strlen(this->deviceId)) &&
+            this->sendGetDeviceState();
+
+    if (ok) {
+        this->createResponse();
+#ifdef DEBUG
+        Serial.println(F("=== GOT GET STATE RESPONSE ==="));
+        Serial.print(F("HTTP status = "));
+        Serial.println(this->lastResponse->httpStatus);
+        Serial.print(F("Length = "));
+        Serial.println(this->lastResponse->length);
+        Serial.print(F("body = "));
+        Serial.println(this->lastResponse->data);
+        Serial.println(F("=== END GOT RESPONSE ==="));
+#endif
+        return ok && this->lastResponse->httpStatus;
+    }
+
+    return false;
+}
+
+void RestBNB::setCurrentState(byte &currentState) const {
+    int i = 0;
+    currentState = this->readByte(i);
+}

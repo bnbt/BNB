@@ -4,8 +4,7 @@
 #include "Arduino.h"
 #include "SoftwareSerial.h"
 
-#define DEBUG
-#define MAX_RETRY 3
+//#define DEBUG
 
 struct Response {
 public:
@@ -28,6 +27,9 @@ public:
     bool putState(const byte& stateId, const unsigned long& code);
     const char* getUserName() const;
 
+    bool getState();
+    void setCurrentState(byte &currentState) const;
+
 private:
     void clearBuffer() const;
     bool hardResetESP() const;
@@ -43,6 +45,7 @@ private:
     bool sendGetDeviceConfig() const;
     void closeConnection() const;
     bool sendPutDeviceState(const byte& stateId, const unsigned long& code) const;
+    bool sendGetDeviceState() const;
 
     byte readByte(int &position) const;
     char *readString(int &position) const;

@@ -6,7 +6,7 @@
 #include <SimpleTimer.h>
 #include <RestBNB.h>
 
-#define DEBUG
+//#define DEBUG
 #define DEVICE_ID "1e950f"
 
 // ESP CONFIG
@@ -20,6 +20,8 @@
 
 #define RESET_COUNT_SECS 5
 #define LCD_NAME_DISPLAY_SESC 2
+const unsigned long GET_STATE_TIMEOUT_SECS = 600000;
+const unsigned long GET_STATE_TIMEOUT_BUSY_SECS = 60000;
 
 SoftwareSerial espSerial(ESP_RX_PIN, ESP_TX_PIN); /* RX:D3, TX:D2 */
 RestBNB *client = new RestBNB(espSerial, ESP_CH_PD_PIN);
@@ -47,10 +49,11 @@ public:
     byte buttonPressCount = 0;
     int timerId = 0;
     byte resetCountSecs = RESET_COUNT_SECS; //secs
-    boolean gotSettings = false;
-    boolean buttonPressed = false;
-    boolean timmerStoped = true;
-    boolean busy = false;
+    bool gotSettings = false;
+    bool buttonPressed = false;
+    bool timmerStoped = true;
+    bool busy = false;
+    unsigned long getStateTimeout = GET_STATE_TIMEOUT_SECS;
     byte statesCount = 0;
     byte currentState = 0;
     char **states;
@@ -184,6 +187,80 @@ void esp_setup() {
     }
 }
 
+void send_option(const byte& stateId, const unsigned long& code) {
+    app.busy = true;
+    byte oldState = app.buttonPressCount;
+    app.currentState = stateId;
+    reset();
+
+#ifdef DEBUG
+    Serial.print("State id = ");
+    Serial.print(stateId);
+    Serial.print(" Code = ");
+    Serial.println(code);
+#endif
+    lcd_write("SENDING REQUEST..");
+    if (client->putState(stateId, code)) {
+        if (client->getLastResponseStatus() == 200) {
+            lcd_write("Thank you", 0);
+            lcd_write(client->getUserName(), 1, false);
+        } else if (client->getLastResponseStatus() == 403) {
+            lcd_write("FORBIDDEN");
+            app.currentState = oldState;
+        } else if (client->getLastResponseStatus() == 404) {
+            lcd_write("UNKNOWN DEVICE");
+            app.currentState = oldState;
+        } else {
+            lcd_write("UNKNOWN ERROR");
+        }
+        delay(LCD_NAME_DISPLAY_SESC * 1000);
+    }
+    app.busy = false;
+    reset();
+}
+
+void get_state() {
+#ifdef DEBUG
+    Serial.println(F("=== GET STATE ==="));
+#endif
+    if (!app.busy) {
+#ifdef DEBUG
+        Serial.println(F("app not busy, continue"));
+#endif
+        // do get state
+        app.getStateTimeout = GET_STATE_TIMEOUT_SECS;
+        app.busy = true;
+        lcd_write("SYNC DEVICE..");
+        if (client->getState()) {
+            if (client->getLastResponseStatus() == 200) {
+                lcd_write("SYNC COMPLETE..");
+                client->setCurrentState(app.currentState);
+            } else if (client->getLastResponseStatus() == 404) {
+                lcd_write("UNKNOWN DEVICE");
+            } else {
+                lcd_write("UNKNOWN ERROR");
+            }
+        }
+        reset();
+        app.busy = false;
+    } else {
+        // app was busy retry shortly
+        app.getStateTimeout = GET_STATE_TIMEOUT_BUSY_SECS;
+#ifdef DEBUG
+        Serial.println(F("app busy, retry shortly"));
+#endif
+    }
+#ifdef DEBUG
+    Serial.print(F("Next run in: "));
+    Serial.print(app.getStateTimeout);
+    Serial.println(F("ms"));
+#endif
+    timer.setTimeout(app.getStateTimeout, get_state);
+#ifdef DEBUG
+    Serial.println(F("=== END GET STATE ==="));
+#endif
+}
+
 ////////////////////////////////
 /// MAIN
 ////////////////////////////////
@@ -206,35 +283,6 @@ void reset() {
     app.timmerStoped = true;
     app.resetCountSecs = RESET_COUNT_SECS;
     app.timerId = 0;
-}
-
-void send_option(const byte& stateId, const unsigned long& code) {
-    app.busy = true;
-    byte oldState = app.buttonPressCount;
-    app.currentState = stateId;
-    reset();
-
-#ifdef DEBUG
-    Serial.print("State id = ");
-    Serial.print(stateId);
-    Serial.print(" Code = ");
-    Serial.println(code);
-#endif
-    lcd_write("SENDING REQUEST..");
-    if (client->putState(stateId, code)) {
-        if (client->getLastResponseStatus() == 200) {
-            lcd_write("Thank you", 0);
-            lcd_write(client->getUserName(), 1, false);
-        } else if (client->getLastResponseStatus() == 403) {
-            lcd_write("FORBIDDEN");
-            app.currentState = oldState;
-        } else {
-            lcd_write("UNKNOWN ERROR");
-        }
-        delay(LCD_NAME_DISPLAY_SESC * 1000);
-    }
-    app.busy = false;
-    reset();
 }
 
 void countdown() {
@@ -294,6 +342,7 @@ void setup() {
     led_setup();
     rfid_setup();
     esp_setup();
+    timer.setTimeout(app.getStateTimeout, get_state);
 #ifdef DEBUG
     Serial.println(F("Setup ended."));
 #endif
