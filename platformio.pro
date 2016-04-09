@@ -10,13 +10,14 @@ INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\cores\ardu
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\SoftwareSerial\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Wire\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Wire\src\utility"
-INCLUDEPATH += "D:\dev\arduino\BNBT\lib\ESP8266\src"
 INCLUDEPATH += "D:\dev\arduino\BNBT\lib\Adafruit_MCP23008\src"
 INCLUDEPATH += "D:\dev\arduino\BNBT\lib\Adafruit_LiquidCrystal\src"
-INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\EEPROM\src"
-INCLUDEPATH += "D:\dev\arduino\BNBT\lib\EEPROMAnything\src"
+INCLUDEPATH += "D:\dev\arduino\BNBT\lib\Wiegand\src"
+INCLUDEPATH += "D:\dev\arduino\BNBT\lib\SimpleTimer\src"
+INCLUDEPATH += "D:\dev\arduino\BNBT\lib\RestBNB\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\lib\ESP8266_ID127"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Bridge\src"
+INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\EEPROM\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Esplora\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Ethernet\src"
 INCLUDEPATH += "$${HOMEDIR}\.platformio\packages\framework-arduinoavr\libraries\Firmata"
@@ -53,4 +54,21 @@ OTHER_FILES += \
     platformio.ini
 
 SOURCES += \
-    src\main.cpp
+    src\main.cpp \
+    lib/Adafruit_LiquidCrystal/src/Adafruit_LiquidCrystal.cpp \
+    lib/Adafruit_MCP23008/src/Adafruit_MCP23008.cpp \
+    lib/RestBNB/src/RestBNB.cpp \
+    lib/SimpleTimer/src/SimpleTimer.cpp \
+    lib/Wiegand/src/Wiegand.cpp
+
+HEADERS += \
+    lib/Adafruit_LiquidCrystal/src/Adafruit_LiquidCrystal.h \
+    lib/Adafruit_MCP23008/src/Adafruit_MCP23008.h \
+    lib/RestBNB/src/RestBNB.h \
+    lib/SimpleTimer/src/SimpleTimer.h \
+    lib/Wiegand/src/Wiegand.h
+
+DISTFILES += \
+    .gitignore \
+    README.md \
+    LICENSE
