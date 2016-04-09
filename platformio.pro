@@ -70,4 +70,5 @@ HEADERS += \
 
 DISTFILES += \
     .gitignore \
-    README.md
+    README.md \
+    LICENSE
