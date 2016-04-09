@@ -17,31 +17,35 @@ public:
 class RestBNB {
 public:
     RestBNB(SoftwareSerial &espSerial, byte chpdPin);
-    void setHost(const char *hostname, uint32_t port);
-    bool begin(uint32_t baud = 9600);
+    bool begin(const uint32_t& baud = 9600);
     bool connect(const char *ssid, const char *password);
+    void setHost(const char *hostname, const uint32_t& port);
     void setDeviceId(const char *deviceId);
-    void closeConnection();
     bool getConfigData();
-    int getLastResponseStatus();
-    bool setConfig(char **&states, byte **&colors, byte &stateCount, byte &currentState);
+    int getLastResponseStatus() const;
+    bool setConfig(char **&states, byte **&colors, byte &stateCount, byte &currentState) const;
+
+    bool putState(const byte& stateId, const unsigned long& code);
+    const char* getUserName() const;
 
 private:
-    void clearBuffer();
-    bool hardResetESP();
-    int readESP();
-    bool expectResponse(const char *str, uint32_t timeout = 1000, bool clearBuffer = true);
-    bool resetESP();
-    bool setMode();
-    bool connectAP();
-    bool setSingleConnection();
-    void readConfig();
-    bool setConnection();
-    bool setSize(int size);
-    bool sendGetDeviceConfig();
+    void clearBuffer() const;
+    bool hardResetESP() const;
+    int readESP() const;
+    bool expectResponse(const char *str, uint32_t timeout = 1000, bool clearBuffer = true) const;
+    bool resetESP() const;
+    bool setMode() const;
+    bool connectAP() const;
+    bool setSingleConnection() const;
+    void createResponse();
+    bool setConnection() const;
+    bool setSize(int size) const;
+    bool sendGetDeviceConfig() const;
+    void closeConnection() const;
+    bool sendPutDeviceState(const byte& stateId, const unsigned long& code) const;
 
-    byte readByte(int &position);
-    char *readString(int &position);
+    byte readByte(int &position) const;
+    char *readString(int &position) const;
 
     SoftwareSerial *espSerial;
     byte chpdPin;

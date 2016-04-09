@@ -6,7 +6,7 @@ RestBNB::RestBNB(SoftwareSerial &espSerial, byte chpdPin) {
     pinMode(this->chpdPin, OUTPUT);
 }
 
-bool RestBNB::hardResetESP() {
+bool RestBNB::hardResetESP() const {
 #ifdef DEBUG
     Serial.println(F("Resetting ESP."));
 #endif
@@ -19,7 +19,7 @@ bool RestBNB::hardResetESP() {
     return this->expectResponse("Ai-Thinker");
 }
 
-void RestBNB::clearBuffer(){
+void RestBNB::clearBuffer() const {
 #ifdef DEBUG
     Serial.println();
     Serial.println(F("=== CLEAR BUFFER ==="));
@@ -37,7 +37,7 @@ void RestBNB::clearBuffer(){
 #endif
 }
 
-int RestBNB::readESP() {
+int RestBNB::readESP() const {
     // improve read trick
     delay(1);
 #ifdef DEBUG
@@ -49,7 +49,7 @@ int RestBNB::readESP() {
 #endif
 }
 
-bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer) {
+bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer) const {
 #ifdef DEBUG
     Serial.println();
     Serial.print(F("=== EXPECTING \""));
@@ -86,7 +86,7 @@ bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer
     return false;
 }
 
-bool RestBNB::resetESP() {
+bool RestBNB::resetESP() const {
 #ifdef DEBUG
     Serial.println();
     Serial.println(F("=== SOFT RESET ==="));
@@ -101,13 +101,13 @@ bool RestBNB::resetESP() {
     return this->expectResponse("ready");
 }
 
-bool RestBNB::begin(uint32_t baud) {
+bool RestBNB::begin(const uint32_t& baud) {
     this->baud = baud;
     this->espSerial->begin(this->baud);
     return this->hardResetESP() && this->resetESP();
 }
 
-bool RestBNB::setMode() {
+bool RestBNB::setMode() const {
     this->clearBuffer();
     this->espSerial->print("AT+CWMODE=");
     this->espSerial->println(this->mode);
@@ -115,7 +115,7 @@ bool RestBNB::setMode() {
     return this->expectResponse("OK", 200);
 }
 
-bool RestBNB::connectAP() {
+bool RestBNB::connectAP() const {
     this->clearBuffer();
     this->espSerial->print("AT+CWJAP=\"");
     this->espSerial->print(this->ssid);
@@ -126,7 +126,7 @@ bool RestBNB::connectAP() {
     return this->expectResponse("OK", 10000);
 }
 
-bool RestBNB::setSingleConnection() {
+bool RestBNB::setSingleConnection() const {
     this->clearBuffer();
     this->espSerial->println("AT+CIPMUX=0");
 
@@ -139,7 +139,7 @@ bool RestBNB::connect(const char *ssid, const char *password) {
     return this->setMode() && this->connectAP() && this->setSingleConnection();
 }
 
-void RestBNB::setHost(const char *hostname, uint32_t port) {
+void RestBNB::setHost(const char *hostname, const uint32_t &port) {
     this->host = hostname;
     this->port = port;
 }
@@ -148,17 +148,17 @@ void RestBNB::setDeviceId(const char *deviceId) {
     this->deviceId = deviceId;
 }
 
-bool RestBNB::setConnection() {
+bool RestBNB::setConnection() const {
     this->clearBuffer();
     this->espSerial->print("AT+CIPSTART=\"TCP\",\"");
     this->espSerial->print(this->host);
     this->espSerial->print("\",");
     this->espSerial->println(this->port);
 
-    return this->expectResponse("OK", 200);
+    return this->expectResponse("OK");
 }
 
-bool RestBNB::setSize(int size) {
+bool RestBNB::setSize(int size) const {
     this->clearBuffer();
     this->espSerial->print("AT+CIPSEND=");
     this->espSerial->println(size);
@@ -166,22 +166,22 @@ bool RestBNB::setSize(int size) {
     return this->expectResponse(">");
 }
 
-bool RestBNB::sendGetDeviceConfig() {
+bool RestBNB::sendGetDeviceConfig() const {
     this->espSerial->println("GET /device/config HTTP/1.1");
     this->espSerial->print("Device: ");
     this->espSerial->println(this->deviceId);
     this->espSerial->println();
 
-    return this->expectResponse("HTTP/1.1 ", 1000, false);
+    return this->expectResponse("HTTP/1.1 ", 2000, false);
 }
 
-void RestBNB::closeConnection() {
+void RestBNB::closeConnection() const {
     this->clearBuffer();
     this->espSerial->println("AT+CIPCLOSE");
     this->expectResponse("OK", 100);
 }
 
-void RestBNB::readConfig() {
+void RestBNB::createResponse() {
     int read;
     /**
      * @brief step
@@ -227,16 +227,16 @@ bool RestBNB::getConfigData() {
             this->setSize(41 + strlen(this->deviceId)) &&
             this->sendGetDeviceConfig();
     if (ok) {
-        this->readConfig();
+        this->createResponse();
 #ifdef DEBUG
-        Serial.println(F("=== GOT RESPONSE ==="));
+        Serial.println(F("=== GOT CONFIG RESPONSE ==="));
         Serial.print(F("HTTP status = "));
         Serial.println(this->lastResponse->httpStatus);
         Serial.print(F("Length = "));
         Serial.println(this->lastResponse->length);
         Serial.print(F("body = "));
         Serial.println(this->lastResponse->data);
-        Serial.println(F("=== END GOT RESPONSE ==="));
+        Serial.println(F("=== END CONFIG GOT RESPONSE ==="));
 #endif
         return ok && this->lastResponse->httpStatus;
     }
@@ -244,14 +244,14 @@ bool RestBNB::getConfigData() {
     return false;
 }
 
-int RestBNB::getLastResponseStatus() {
+int RestBNB::getLastResponseStatus() const {
     if (this->lastResponse && this->lastResponse->httpStatus) {
         return this->lastResponse->httpStatus;
     }
     return 0;
 }
 
-byte RestBNB::readByte(int &position) {
+byte RestBNB::readByte(int &position) const{
     if (position >= this->lastResponse->length) {
         return 0;
     }
@@ -267,7 +267,7 @@ byte RestBNB::readByte(int &position) {
     return currentState;
 }
 
-char *RestBNB::readString(int &position) {
+char *RestBNB::readString(int &position) const {
     if (position >= this->lastResponse->length) {
         return '\0';
     }
@@ -286,7 +286,7 @@ char *RestBNB::readString(int &position) {
     return buffer;
 }
 
-bool RestBNB::setConfig(char **&states, byte** &colors, byte &stateCount, byte &currentState) {
+bool RestBNB::setConfig(char **&states, byte** &colors, byte &stateCount, byte &currentState) const{
     int i = 0;
     byte j = 0;
     currentState = this->readByte(i);
@@ -333,4 +333,47 @@ bool RestBNB::setConfig(char **&states, byte** &colors, byte &stateCount, byte &
 #endif
 
     return true;
+}
+
+bool RestBNB::sendPutDeviceState(const byte& stateId, const unsigned long& code) const {
+    this->espSerial->print("PUT /device/state?s=");
+    this->espSerial->print(stateId);
+    this->espSerial->print("&u=");
+    this->espSerial->print(code);
+    this->espSerial->print(" HTTP/1.1\r\nDevice: ");
+    this->espSerial->println(this->deviceId);
+    this->espSerial->println();
+
+    return this->expectResponse("HTTP/1.1 ", 2000, false);
+}
+
+bool RestBNB::putState(const byte& stateId, const unsigned long& code) {
+    this->closeConnection();
+
+    int length = 46 + strlen(this->deviceId) +
+            String(stateId).length() + String(code).length();
+
+    bool ok = this->setConnection() &&
+            this->setSize(length) &&
+            this->sendPutDeviceState(stateId, code);
+    if (ok) {
+        this->createResponse();
+#ifdef DEBUG
+        Serial.println(F("=== GOT PUT STATE RESPONSE ==="));
+        Serial.print(F("HTTP status = "));
+        Serial.println(this->lastResponse->httpStatus);
+        Serial.print(F("Length = "));
+        Serial.println(this->lastResponse->length);
+        Serial.print(F("body = "));
+        Serial.println(this->lastResponse->data);
+        Serial.println(F("=== END GOT RESPONSE ==="));
+#endif
+        return ok && this->lastResponse->httpStatus;
+    }
+
+    return false;
+}
+
+const char *RestBNB::getUserName() const {
+    return this->lastResponse->data;
 }

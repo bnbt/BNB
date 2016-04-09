@@ -1,5 +1,3 @@
-#define DEBUG
-
 #include "Arduino.h"
 #include <SoftwareSerial.h>
 #include <Wire.h>
@@ -8,6 +6,7 @@
 #include <SimpleTimer.h>
 #include <RestBNB.h>
 
+#define DEBUG
 #define DEVICE_ID "1e950f"
 
 // ESP CONFIG
@@ -18,7 +17,9 @@
 #define ESP_RX_PIN 7 //  Connect this pin to TX on the esp8266
 #define ESP_TX_PIN 8 //  Connect this pin to RX on the esp8266
 #define ESP_CH_PD_PIN 12 // Connect this pin to CH_PD on the esp8266, not reset. (let reset be unconnected)
+
 #define RESET_COUNT_SECS 5
+#define LCD_NAME_DISPLAY_SESC 2
 
 SoftwareSerial espSerial(ESP_RX_PIN, ESP_TX_PIN); /* RX:D3, TX:D2 */
 RestBNB *client = new RestBNB(espSerial, ESP_CH_PD_PIN);
@@ -49,6 +50,7 @@ public:
     boolean gotSettings = false;
     boolean buttonPressed = false;
     boolean timmerStoped = true;
+    boolean busy = false;
     byte statesCount = 0;
     byte currentState = 0;
     char **states;
@@ -72,7 +74,7 @@ void lcd_setup() {
 #endif
 }
 
-void lcd_write(const char *msg, uint8_t row = 0, boolean clear_all = true) {
+void lcd_write(const char *msg, const uint8_t& row = 0, const bool& clear_all = true) {
     byte i = 0;
     char str[LCD_COLS] = { 0 };
     for(;i<LCD_COLS; ++i) { str[i] = ' '; }
@@ -113,8 +115,7 @@ void button_setup() {
 ///////////////////////////////
 /// LED
 ///////////////////////////////
-void setColor(int red, int green, int blue)
-{
+void setColor(const int& red, const int& green, const int& blue) {
     analogWrite(RED_LED_PIN, red);
     analogWrite(GREEN_LED_PIN, green);
     analogWrite(BLUE_LED_PIN, blue);
@@ -149,6 +150,7 @@ void rfid_setup() {
 ///////////////////////////////
 /// ESP
 ///////////////////////////////
+void reset();
 
 void esp_setup() {
     lcd_write("STARTING WIFI..");
@@ -164,20 +166,8 @@ void esp_setup() {
                 lcd_write("GOT CONFIG DATA..");
                 if (client->getLastResponseStatus() == 200) {
                     client->setConfig(app.states, app.colors, app.statesCount, app.currentState);
-                    lcd_write("CONFIG COMPLETE..");
-
-                    // remove after debug
-                    Serial.println(app.statesCount);
-                    Serial.println(app.currentState);
-                    for (byte i=0; i<app.statesCount; ++i) {
-                        Serial.println(app.states[i]);
-                        Serial.print(app.colors[i][0]);
-                        Serial.print(',');
-                        Serial.print(app.colors[i][1]);
-                        Serial.print(',');
-                        Serial.println(app.colors[i][2]);
-                    }
-
+                    lcd_write("DEVICE SET..");
+                    reset();
                 } else if (client->getLastResponseStatus() == 404) {
                     lcd_write("UNKNOWN DEVICE");
                 } else {
@@ -204,23 +194,47 @@ void reset() {
 #endif
     // disable timer
     timer.disable(app.timerId);
-    // power down the led
-    setColor(0,0,0);
+    app.buttonPressCount = app.currentState;
+    setColor(
+                app.colors[app.buttonPressCount][0],
+            app.colors[app.buttonPressCount][1],
+            app.colors[app.buttonPressCount][2]
+            );
     // reset LCD
-    lcd_write("PRESS BUTTON");
+    lcd_write(app.states[app.buttonPressCount]);
     // reset settings
     app.timmerStoped = true;
     app.resetCountSecs = RESET_COUNT_SECS;
-    app.buttonPressCount = 0;
     app.timerId = 0;
 }
 
-void send_option(byte state_id, unsigned long code) {
-    // @todo:
+void send_option(const byte& stateId, const unsigned long& code) {
+    app.busy = true;
+    byte oldState = app.buttonPressCount;
+    app.currentState = stateId;
+    reset();
+
+#ifdef DEBUG
     Serial.print("State id = ");
-    Serial.print(state_id);
+    Serial.print(stateId);
     Serial.print(" Code = ");
     Serial.println(code);
+#endif
+    lcd_write("SENDING REQUEST..");
+    if (client->putState(stateId, code)) {
+        if (client->getLastResponseStatus() == 200) {
+            lcd_write("Thank you", 0);
+            lcd_write(client->getUserName(), 1, false);
+        } else if (client->getLastResponseStatus() == 403) {
+            lcd_write("FORBIDDEN");
+            app.currentState = oldState;
+        } else {
+            lcd_write("UNKNOWN ERROR");
+        }
+        delay(LCD_NAME_DISPLAY_SESC * 1000);
+    }
+    app.busy = false;
+    reset();
 }
 
 void countdown() {
@@ -246,14 +260,27 @@ void countdown() {
 
 void updateButtonState() {
     // reset state if over the max count
-    app.buttonPressCount = (app.buttonPressCount % app.statesCount) + 1;
+    app.buttonPressCount = (app.buttonPressCount + 1) % app.statesCount;
     // write state to lcd first row
-    lcd_write(app.states[app.buttonPressCount-1], 0, false);
+    lcd_write(app.states[app.buttonPressCount], 0, false);
     // set button color
-    setColor(app.colors[app.buttonPressCount-1][0],
-            app.colors[app.buttonPressCount-1][1],
-            app.colors[app.buttonPressCount-1][2]
+    setColor(app.colors[app.buttonPressCount][0],
+            app.colors[app.buttonPressCount][1],
+            app.colors[app.buttonPressCount][2]
             );
+#ifdef DEBUG
+    Serial.print(F(" StateCount = "));
+    Serial.print(app.buttonPressCount);
+    Serial.print(F(" State = '"));
+    Serial.print(app.states[app.buttonPressCount]);
+    Serial.print(F("' LED color = ["));
+    Serial.print(app.colors[app.buttonPressCount][0]);
+    Serial.print(F(", "));
+    Serial.print(app.colors[app.buttonPressCount][1]);
+    Serial.print(F(", "));
+    Serial.print(app.colors[app.buttonPressCount][2]);
+    Serial.println(F("]"));
+#endif
 }
 
 void setup() {
@@ -272,19 +299,8 @@ void setup() {
 #endif
 }
 
-// @todo: remove
-void updateState(byte state, unsigned long rfid) {
-    espSerial.print("PUT /device/state?s=");
-    espSerial.print(state);
-    espSerial.print("&u=");
-    espSerial.print(rfid);
-    espSerial.print(" HTTP/1.1\r\nDevice: ");
-    espSerial.println(DEVICE_ID);
-    espSerial.println();
-}
-
 void loop() {
-    if (app.statesCount) {
+    if (app.statesCount && !app.busy) {
         int state = digitalRead(BUTTON_PIN);
         if (state == HIGH) {
             // make sure that long press is consider 1 state changed
@@ -296,19 +312,6 @@ void loop() {
                 app.resetCountSecs = RESET_COUNT_SECS;
                 // update the button color, times pressed and LCD display
                 updateButtonState();
-#ifdef DEBUG
-                Serial.print(F(" StateCount = "));
-                Serial.print(app.buttonPressCount);
-                Serial.print(F(" State = '"));
-                Serial.print(app.states[app.buttonPressCount-1]);
-                Serial.print(F("' LED color = ["));
-                Serial.print(app.colors[app.buttonPressCount-1][0]);
-                Serial.print(F(", "));
-                Serial.print(app.colors[app.buttonPressCount-1][1]);
-                Serial.print(F(", "));
-                Serial.print(app.colors[app.buttonPressCount-1][2]);
-                Serial.println(F("]"));
-#endif
                 // start timer if not running
                 if (app.timmerStoped) { countdown(); }
                 // enable 1 time press
@@ -325,12 +328,15 @@ void loop() {
                 Serial.print(F("Selection confirmed. Code:  "));
                 Serial.println(wg.getCode());
 #endif
-                // reset everything
-                byte state = app.buttonPressCount;
-                reset();
                 // send selection to wifi
-                send_option(state, wg.getCode());
+                send_option(app.buttonPressCount, wg.getCode());
+            } else if (wg.available()) {
+                // bad scan reset buffer;
+                wg.getCode();
             }
         }
+    } else if (wg.available()) {
+        // bad scan reset buffer;
+        wg.getCode();
     }
 }
