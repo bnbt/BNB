@@ -8,13 +8,13 @@ RestBNB::RestBNB(SoftwareSerial &espSerial, byte chpdPin) {
 
 bool RestBNB::hardResetESP() {
 #ifdef DEBUG
-    Serial.println("Resetting ESP.");
+    Serial.println(F("Resetting ESP."));
 #endif
     digitalWrite(this->chpdPin, LOW);
     delay(500);
     digitalWrite(this->chpdPin, HIGH);
 #ifdef DEBUG
-    Serial.println("ESP reset.");
+    Serial.println(F("ESP reset."));
 #endif
     return this->expectResponse("Ai-Thinker");
 }
@@ -22,7 +22,7 @@ bool RestBNB::hardResetESP() {
 void RestBNB::clearBuffer(){
 #ifdef DEBUG
     Serial.println();
-    Serial.println("=== CLEAR BUFFER ===");
+    Serial.println(F("=== CLEAR BUFFER ==="));
 #endif
     while(this->espSerial->available() > 0) {
 #ifdef DEBUG
@@ -33,7 +33,7 @@ void RestBNB::clearBuffer(){
     }
 #ifdef DEBUG
     Serial.println();
-    Serial.println("=== BUFFER EMPTY ===");
+    Serial.println(F("=== BUFFER EMPTY ==="));
 #endif
 }
 
@@ -52,9 +52,9 @@ int RestBNB::readESP() {
 bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer) {
 #ifdef DEBUG
     Serial.println();
-    Serial.print("=== EXPECTING \"");
+    Serial.print(F("=== EXPECTING \""));
     Serial.print(str);
-    Serial.println("\" ===");
+    Serial.println(F("\" ==="));
 #endif
     byte i;
     byte size = strlen(str);
@@ -69,9 +69,9 @@ bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer
                 if (i == (size-1)) {
 #ifdef DEBUG
                     Serial.println();
-                    Serial.print("=== EXPECTING OK: ");
+                    Serial.print(F("=== EXPECTING OK: "));
                     Serial.print(millis() - start);
-                    Serial.println(" ===");
+                    Serial.println(F(" ==="));
 #endif
                     if (clearBuffer) { this->clearBuffer(); }
                     return true;
@@ -81,7 +81,7 @@ bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer
     }
 #ifdef DEBUG
     Serial.println();
-    Serial.println("=== EXPECTING NOK ===");
+    Serial.println(F("=== EXPECTING NOK ==="));
 #endif
     return false;
 }
@@ -89,13 +89,13 @@ bool RestBNB::expectResponse(const char *str, uint32_t timeout, bool clearBuffer
 bool RestBNB::resetESP() {
 #ifdef DEBUG
     Serial.println();
-    Serial.println("=== SOFT RESET ===");
+    Serial.println(F("=== SOFT RESET ==="));
 #endif
     this->clearBuffer();
     this->espSerial->println("AT+RST");
 #ifdef DEBUG
     Serial.println();
-    Serial.println("=== RESET ===");
+    Serial.println(F("=== RESET ==="));
     Serial.println();
 #endif
     return this->expectResponse("ready");
@@ -193,9 +193,10 @@ void RestBNB::readConfig() {
     this->lastResponse = new Response();
     this->lastResponse->httpStatus = 0;
     this->lastResponse->data = "";
+    this->lastResponse->length = 0;
     String *data = new String();
 #ifdef DEBUG
-    Serial.println("=== PARSING ===");
+    Serial.println(F("=== PARSING ==="));
 #endif
     while(this->espSerial->available() > 0) {
         if (step == 1) {
@@ -214,6 +215,7 @@ void RestBNB::readConfig() {
             } else {
                 this->clearBuffer();
                 this->lastResponse->data = data->c_str();
+                this->lastResponse->length = data->length();
                 return;
             }
         }
@@ -226,7 +228,16 @@ bool RestBNB::getConfigData() {
             this->sendGetDeviceConfig();
     if (ok) {
         this->readConfig();
-        Serial.print(this->lastResponse->data);
+#ifdef DEBUG
+        Serial.println(F("=== GOT RESPONSE ==="));
+        Serial.print(F("HTTP status = "));
+        Serial.println(this->lastResponse->httpStatus);
+        Serial.print(F("Length = "));
+        Serial.println(this->lastResponse->length);
+        Serial.print(F("body = "));
+        Serial.println(this->lastResponse->data);
+        Serial.println(F("=== END GOT RESPONSE ==="));
+#endif
         return ok && this->lastResponse->httpStatus;
     }
 
@@ -240,89 +251,86 @@ int RestBNB::getLastResponseStatus() {
     return 0;
 }
 
-bool RestBNB::setConfig(char *states[], byte colors[][3], byte &stateCount) {
-    int length = strlen(this->lastResponse->data);
-    int i = 0;
-    byte currentState = 0;
-    char current;
-    byte statesCount = 0;
-    byte j;
-
-    /**
-     * @brief step
-     * 0 -> read current state
-     * 1 -> read state name
-     * 2 -> read red color
-     * 3 -> read green color
-     * 4 -> read blue color
-     */
-    byte step = 0;
-    while(i < length) {
-        if (step == 0) {
-            Serial.println();
-            Serial.println("Step 0");
-            current = this->lastResponse->data[i];
-            while(i<length && current != ',') {
-                currentState = currentState*10 + current-48;
-                current = this->lastResponse->data[++i];
-            }
-            Serial.println(currentState);
-            step = 1;
-        } else if (step == 1) {
-            Serial.println();
-            Serial.println("Step 1");
-            j = 0;
-            current = this->lastResponse->data[i];
-            while(i<length && current != ',') {
-                states[statesCount][j] = current;
-                ++j;
-                current = this->lastResponse->data[++i];
-            }
-            states[statesCount][j] = '\0';
-            step = 2;
-            Serial.println(states[statesCount]);
-        } else if (step == 2) {
-            Serial.println();
-            Serial.println("Step 2");
-            colors[statesCount][0] = 0;
-            current = this->lastResponse->data[i];
-            while(i<length && current != ',') {
-                colors[statesCount][0] = colors[statesCount][0]*10 + current-48;
-                current = this->lastResponse->data[++i];
-            }
-            Serial.println(colors[statesCount][0]);
-            step = 3;
-        } else if (step == 3) {
-            Serial.println();
-            Serial.println("Step 3");
-            colors[statesCount][1] = 0;
-            current = this->lastResponse->data[i];
-            while(i<length && current != ',') {
-                colors[statesCount][1] = colors[statesCount][1]*10 + current-48;
-                current = this->lastResponse->data[++i];
-            }
-            Serial.println(colors[statesCount][1]);
-            step = 4;
-        } else if (step == 4) {
-            Serial.println();
-            Serial.println("Step 4");
-            colors[statesCount][2] = 0;
-            current = this->lastResponse->data[i];
-            while(i<length && current != ',') {
-                colors[statesCount][2] = colors[statesCount][2]*10 + current-48;
-                current = this->lastResponse->data[++i];
-            }
-            step = 1;
-            ++statesCount;
-            Serial.println(colors[statesCount][2]);
-            Serial.println(statesCount);
-        }
-        ++i;
+byte RestBNB::readByte(int &position) {
+    if (position >= this->lastResponse->length) {
+        return 0;
     }
-    stateCount = statesCount;
+
+    byte currentState = 0;
+    char iter = this->lastResponse->data[position];
+    while (position < this->lastResponse->length && iter != ',') {
+        currentState = currentState*10 + iter - 48;
+        iter = this->lastResponse->data[++position];
+    }
+    ++position;
+
+    return currentState;
+}
+
+char *RestBNB::readString(int &position) {
+    if (position >= this->lastResponse->length) {
+        return '\0';
+    }
+
+    char iter = this->lastResponse->data[position];
+    char *buffer = new char[25];
+    byte len = 0;
+    while (position < this->lastResponse->length && iter != ',') {
+        buffer[len] = iter;
+        ++len;
+        iter = this->lastResponse->data[++position];
+    }
+    buffer[len] = '\0';
+    ++position;
+
+    return buffer;
+}
+
+bool RestBNB::setConfig(char **&states, byte** &colors, byte &stateCount, byte &currentState) {
+    int i = 0;
+    byte j = 0;
+    currentState = this->readByte(i);
+#ifdef DEBUG
     Serial.println();
-    Serial.println(statesCount);
-    Serial.println(currentState);
-    Serial.println(states[0]);
-    Serial.println(colors[0][0]);
+    Serial.print(F("=== currentState = "));
+    Serial.print(currentState);
+    Serial.println(F(" ==="));
+#endif
+
+    stateCount = this->readByte(i);
+#ifdef DEBUG
+    Serial.print(F("=== stateCount = "));
+    Serial.print(stateCount);
+    Serial.println(F(" ==="));
+#endif
+    states = new char*[stateCount];
+    colors = new byte*[stateCount];
+
+    for(j=0; j<stateCount; ++j) {
+        states[j] = this->readString(i);
+        colors[j] = new byte[3];
+        colors[j][0] = readByte(i);
+        colors[j][1] = readByte(i);
+        colors[j][2] = readByte(i);
+    }
+#ifdef DEBUG
+    for(j=0; j<stateCount; ++j) {
+        Serial.print(F("=== states["));
+        Serial.print(j);
+        Serial.print(F("] = "));
+        Serial.print(states[j]);
+        Serial.println(F(" ==="));
+
+        Serial.print(F("=== colors["));
+        Serial.print(j);
+        Serial.print(F("] = ("));
+        for (byte m=0; m<3; ++m) {
+            Serial.print(colors[j][m]);
+            if (m != 2) { Serial.print(F(", ")); }
+        }
+        Serial.println(F(") ==="));
+    }
+#endif
+
+    return true;
 }

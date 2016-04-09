@@ -10,6 +10,7 @@
 struct Response {
 public:
     int httpStatus;
+    int length;
     const char *data;
 };
 
@@ -23,7 +24,7 @@ public:
     void closeConnection();
     bool getConfigData();
     int getLastResponseStatus();
-    bool setConfig(char *states[], byte colors[][3], byte &stateCount);
+    bool setConfig(char **&states, byte **&colors, byte &stateCount, byte &currentState);
 
 private:
     void clearBuffer();
@@ -38,6 +39,9 @@ private:
     bool setConnection();
     bool setSize(int size);
     bool sendGetDeviceConfig();
+
+    byte readByte(int &position);
+    char *readString(int &position);
 
     SoftwareSerial *espSerial;
     byte chpdPin;
