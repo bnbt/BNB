@@ -209,7 +209,7 @@ void esp_setup() {
 
 void send_option(const byte& stateId, const unsigned long& code) {
     app.busy = true;
-    byte oldState = app.buttonPressCount;
+    byte oldState = app.currentState;
     app.currentState = stateId;
     reset();
 
