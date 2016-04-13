@@ -314,7 +314,8 @@ void countdown() {
     Serial.println(F(" secs"));
 #endif
     // write countdown to lcd;
-    lcd_write(String(app.resetCountSecs).c_str(), 1, false);
+    const char text[] = { 'S', 'c', 'a', 'n', ' ', 'i', 'n', ' ', '[', char(48+app.resetCountSecs), ']', '\0'};
+    lcd_write(text);
     app.resetCountSecs -= 1;
 
     if (app.resetCountSecs == 0) {
