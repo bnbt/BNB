@@ -39,7 +39,6 @@
 #define ESP_CH_PD_PIN 12 // Connect this pin to CH_PD on the esp8266, not reset. (let reset be unconnected)
 
 #define RESET_COUNT_SECS 5
-#define LCD_NAME_DISPLAY_SESC 2
 const unsigned long GET_STATE_TIMEOUT_SECS = 600000;
 const unsigned long GET_STATE_TIMEOUT_BUSY_SECS = 60000;
 
@@ -62,6 +61,7 @@ Adafruit_LiquidCrystal lcd(0x20);
 // RFID CONFIG
 WIEGAND wg;
 SimpleTimer timer;
+#define BEEPER_PIN 4
 
 // MAIN APP CONFIG
 struct AppState {
@@ -165,9 +165,28 @@ void rfid_setup() {
     Serial.println(F("Setting up RFID."));
 #endif
     wg.begin();
+    pinMode(BEEPER_PIN, OUTPUT);
+    digitalWrite(BEEPER_PIN, HIGH);
 #ifdef DEBUG
     Serial.println(F("RFID set."));
 #endif
+}
+
+void notify(bool success = true) {
+    if (success) {
+        for(byte i=0; i<3; ++i) {
+            digitalWrite(BEEPER_PIN, LOW);
+            delay(200);
+            digitalWrite(BEEPER_PIN, HIGH);
+            delay(200);
+        }
+        delay(800);
+    } else {
+        digitalWrite(BEEPER_PIN, LOW);
+        delay(600);
+        digitalWrite(BEEPER_PIN, HIGH);
+        delay(1000);
+    }
 }
 
 ///////////////////////////////
@@ -224,16 +243,19 @@ void send_option(const byte& stateId, const unsigned long& code) {
         if (client->getLastResponseStatus() == 200) {
             lcd_write("Thank you", 0);
             lcd_write(client->getUserName(), 1, false);
+            notify();
         } else if (client->getLastResponseStatus() == 403) {
             lcd_write("FORBIDDEN");
             app.currentState = oldState;
+            notify(false);
         } else if (client->getLastResponseStatus() == 404) {
             lcd_write("UNKNOWN DEVICE");
             app.currentState = oldState;
+            notify(false);
         } else {
             lcd_write("UNKNOWN ERROR");
+            notify(false);
         }
-        delay(LCD_NAME_DISPLAY_SESC * 1000);
     }
     app.busy = false;
     reset();
@@ -315,7 +337,7 @@ void countdown() {
 #endif
     // write countdown to lcd;
     const char text[] = { 'S', 'c', 'a', 'n', ' ', 'i', 'n', ' ', '[', char(48+app.resetCountSecs), ']', '\0'};
-    lcd_write(text);
+    lcd_write(text, 1, false);
     app.resetCountSecs -= 1;
 
     if (app.resetCountSecs == 0) {
